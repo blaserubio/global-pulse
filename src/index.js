@@ -9,6 +9,7 @@ import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ExpressAdapter } from '@bull-board/express';
 import config from './config/index.js';
 import routes from './api/routes.js';
+import { requireAdminKey } from './api/middleware/adminAuth.js';
 import { ALL_QUEUES } from './jobs/queues.js';
 import logger from './utils/logger.js';
 
@@ -108,7 +109,7 @@ createBullBoard({
   queues: ALL_QUEUES.map((q) => new BullMQAdapter(q)),
   serverAdapter,
 });
-app.use('/admin/queues', serverAdapter.getRouter());
+app.use('/admin/queues', requireAdminKey, serverAdapter.getRouter());
 
 // Routes
 app.use('/api/v1', routes);

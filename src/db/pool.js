@@ -1,6 +1,7 @@
 import pg from 'pg';
 import config from '../config/index.js';
 import logger from '../utils/logger.js';
+// config imported for nodeEnv check in slow query logging
 
 const pool = new pg.Pool({
   connectionString: config.database.url,
@@ -24,7 +25,10 @@ export async function query(text, params) {
   const result = await pool.query(text, params);
   const duration = Date.now() - start;
   if (duration > 1000) {
-    logger.warn('Slow query', { duration, text: text.slice(0, 200) });
+    logger.warn('Slow query', {
+      duration,
+      ...(config.nodeEnv !== 'production' && { text: text.slice(0, 200) }),
+    });
   }
   return result;
 }

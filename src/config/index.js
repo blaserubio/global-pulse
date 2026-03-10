@@ -5,7 +5,13 @@ const config = {
   nodeEnv: process.env.NODE_ENV || 'development',
 
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://globalpulse:globalpulse@localhost:5432/globalpulse',
+    url: (() => {
+      const url = process.env.DATABASE_URL;
+      if (!url && process.env.NODE_ENV === 'production') {
+        throw new Error('DATABASE_URL must be set in production');
+      }
+      return url || 'postgresql://globalpulse:globalpulse@localhost:5432/globalpulse';
+    })(),
   },
 
   redis: {

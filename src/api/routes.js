@@ -61,7 +61,9 @@ function validate(schema, source = 'query') {
 
 function cached(ttl = 900) {
   return async (req, res, next) => {
-    const key = `api:${req.originalUrl}`;
+    // Use path + sorted known params only (not raw URL) to prevent cache flooding
+    const sortedParams = Object.keys(req.query).sort().map(k => `${k}=${req.query[k]}`).join('&');
+    const key = `api:${req.path}?${sortedParams}`;
     const hit = await cacheGet(key);
     if (hit) {
       res.set('X-Cache', 'HIT');
@@ -223,14 +225,20 @@ router.post('/admin/ingest', requireAdminKey, async (_req, res) => {
 
 // --- Pending Sources Admin Routes ---
 
-router.get('/admin/pending-sources', requireAdminKey, async (req, res) => {
+const pendingSourcesSchema = z.object({
+  status: z.enum(['pending', 'approved', 'rejected', 'ignored']).optional(),
+  min_seen: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
+
+router.get('/admin/pending-sources', requireAdminKey, validate(pendingSourcesSchema), async (req, res) => {
   try {
-    const { status, min_seen, limit = 20, offset = 0 } = req.query;
     const result = await pendingSourceRepo.getPendingSources({
-      status,
-      minTimesSeen: min_seen ? parseInt(min_seen, 10) : undefined,
-      limit: parseInt(limit, 10),
-      offset: parseInt(offset, 10),
+      status: req.validated.status,
+      minTimesSeen: req.validated.min_seen,
+      limit: req.validated.limit,
+      offset: req.validated.offset,
     });
     res.json(result);
   } catch (err) {
@@ -239,13 +247,17 @@ router.get('/admin/pending-sources', requireAdminKey, async (req, res) => {
   }
 });
 
-router.post('/admin/pending-sources/:id/review', requireAdminKey, async (req, res) => {
+const reviewBodySchema = z.object({
+  status: z.enum(['approved', 'rejected', 'ignored']),
+});
+
+router.post('/admin/pending-sources/:id/review', requireAdminKey, validate(idSchema, 'params'), async (req, res) => {
   try {
-    const { status } = req.body;
-    if (!['approved', 'rejected', 'ignored'].includes(status)) {
+    const bodyResult = reviewBodySchema.safeParse(req.body);
+    if (!bodyResult.success) {
       return res.status(400).json({ error: 'Status must be approved, rejected, or ignored' });
     }
-    const source = await pendingSourceRepo.reviewSource(req.params.id, status);
+    const source = await pendingSourceRepo.reviewSource(req.validated.id, bodyResult.data.status);
     if (!source) return res.status(404).json({ error: 'Pending source not found' });
     res.json(source);
   } catch (err) {
@@ -254,9 +266,26 @@ router.post('/admin/pending-sources/:id/review', requireAdminKey, async (req, re
   }
 });
 
-router.post('/admin/pending-sources/:id/promote', requireAdminKey, async (req, res) => {
+const promoteBodySchema = z.object({
+  name: z.string().min(1).max(200),
+  slug: z.string().min(1).max(100),
+  url: z.string().url(),
+  country_code: z.string().length(2),
+  region: z.enum(['americas', 'europe', 'asia_pacific', 'mideast_africa']),
+  rss_feeds: z.array(z.string().url()).min(1),
+  funding_model: z.enum(['state_funded', 'public', 'private', 'nonprofit', 'unknown']).default('unknown'),
+  editorial_lean: z.enum(['left', 'center_left', 'center', 'center_right', 'right', 'unknown']).default('unknown'),
+  factual_rating: z.enum(['very_high', 'high', 'mostly_factual', 'mixed', 'low', 'unknown']).default('unknown'),
+  ownership: z.string().max(500).default('Unknown'),
+});
+
+router.post('/admin/pending-sources/:id/promote', requireAdminKey, validate(idSchema, 'params'), async (req, res) => {
   try {
-    const source = await pendingSourceRepo.promoteSource(req.params.id, req.body);
+    const bodyResult = promoteBodySchema.safeParse(req.body);
+    if (!bodyResult.success) {
+      return res.status(400).json({ error: 'Validation failed', details: bodyResult.error.issues });
+    }
+    const source = await pendingSourceRepo.promoteSource(req.validated.id, bodyResult.data);
     if (!source) return res.status(404).json({ error: 'Pending source not found' });
     res.json({ message: 'Source promoted to active', source });
   } catch (err) {
@@ -274,9 +303,9 @@ router.post('/admin/discover-sources', requireAdminKey, async (_req, res) => {
   }
 });
 
-router.get('/admin/costs', requireAdminKey, async (req, res) => {
+router.get('/admin/costs', requireAdminKey, validate(hoursSchema), async (req, res) => {
   try {
-    const hours = parseInt(req.query.hours || '24', 10);
+    const hours = req.validated.hours;
     const summary = await getCostSummary(hours);
     res.json({ summary, period_hours: hours });
   } catch (err) {

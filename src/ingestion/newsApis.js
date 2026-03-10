@@ -84,7 +84,7 @@ async function fetchMediastack(countryCode) {
   const key = config.apis.mediastack.key;
   if (!key) return [];
   try {
-    const url = `http://api.mediastack.com/v1/news?access_key=${key}&countries=${countryCode}&limit=50`;
+    const url = `https://api.mediastack.com/v1/news?access_key=${key}&countries=${countryCode}&limit=50`;
     const res = await fetch(url);
     if (!res.ok) return [];
     const data = await res.json();
