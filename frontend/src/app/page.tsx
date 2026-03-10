@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, Suspense } from "react";
 import useSWR from "swr";
-import { swrFetcher } from "@/lib/api";
+import { swrFetcher, API_BASE } from "@/lib/api";
 import { StoryCard } from "@/components/StoryCard";
 import { StatsBar } from "@/components/StatsBar";
 import { RefreshButton } from "@/components/RefreshButton";
@@ -10,8 +10,6 @@ import { FilterToolbar, type FilterState } from "@/components/FilterToolbar";
 import type { StoryCluster, OverviewStats, Region } from "@/lib/types";
 import { REGION_LABELS } from "@/lib/utils";
 import { Loader2 } from "lucide-react";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api/v1";
 
 function StoryFeed() {
   const [filters, setFilters] = useState<FilterState>({

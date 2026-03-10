@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import config from '../config/index.js';
 import * as pendingSourceRepo from './pendingSourceRepo.js';
+import { trackApiCall } from '../utils/apiCostTracker.js';
 import logger from '../utils/logger.js';
 
 function getClient() {
@@ -47,6 +48,13 @@ Sample article titles from this source:
 Return ONLY valid JSON:
 {"country_code": "XX", "region": "...", "language": "en", "funding_model": "...", "editorial_lean": "...", "factual_rating": "...", "ownership": "...", "is_legitimate": true, "assessment": "Brief explanation"}`,
       }],
+    });
+
+    await trackApiCall({
+      operation: 'source_discovery',
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     let text = response.content[0].text.trim();

@@ -2,6 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import config from '../config/index.js';
 import { query } from '../db/pool.js';
 import { cacheGet, cacheSet } from './cache.js';
+import { trackApiCall } from '../utils/apiCostTracker.js';
 import logger from '../utils/logger.js';
 
 const CACHE_KEY = 'psychology-map';
@@ -76,6 +77,13 @@ Return a JSON array of tactics, sorted from most frequently used to least. Each 
 Return ONLY valid JSON. No markdown, no code fences. Example format:
 [{"name":"Fear Appeal","count":15,"percentage":75,"description":"Using threat or danger to create urgency.","why_used":"Fear activates the amygdala, making readers more likely to engage, share, and return for updates.","examples":["Story title 1","Story title 2"]}]`
       }],
+    });
+
+    await trackApiCall({
+      operation: 'psychology_map',
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     let text = response.content[0].text.trim();

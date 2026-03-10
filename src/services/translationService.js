@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import config from '../config/index.js';
 import { query } from '../db/pool.js';
+import { trackApiCall } from '../utils/apiCostTracker.js';
 import logger from '../utils/logger.js';
 
 function getClient() {
@@ -39,6 +40,14 @@ ${excerpt ? `\nBody excerpt:\n${excerpt}` : ''}
 Respond in exactly this JSON format:
 {"title": "English title", "body_text": "English body text"}`,
       }],
+    });
+
+    await trackApiCall({
+      operation: 'translation',
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      articleId: undefined,
     });
 
     let text = response.content[0].text.trim();

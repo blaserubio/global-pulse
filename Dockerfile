@@ -13,6 +13,6 @@ COPY . .
 RUN chown -R appuser:appgroup /app
 USER appuser
 
-EXPOSE 3000
+EXPOSE 4000
 
 CMD ["node", "src/index.js"]

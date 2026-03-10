@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import config from '../config/index.js';
 import * as clusterRepo from './clusterRepo.js';
+import { trackApiCall } from '../utils/apiCostTracker.js';
 import logger from '../utils/logger.js';
 
 const TOPICS = [
@@ -61,6 +62,14 @@ Include only categories with confidence >= 0.6. The first item should be the pri
       }],
     });
 
+    await trackApiCall({
+      operation: 'classification',
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      clusterId: cluster.id,
+    });
+
     let text = response.content[0].text.trim();
     text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
     let parsed = JSON.parse(text);
@@ -110,6 +119,7 @@ Include only categories with confidence >= 0.6. The first item should be the pri
     return null;
   } catch (err) {
     logger.error('Topic classification failed', { clusterId: cluster.id, error: err.message });
+    await clusterRepo.recordEnrichmentFailure(cluster.id);
     return null;
   }
 }
@@ -155,6 +165,13 @@ ${excerpts.map((e, i) => `${i + 1}. ${e}`).join('\n\n')}`;
       model: 'claude-sonnet-4-6',
       max_tokens: 100,
       messages: [{ role: 'user', content: prompt }],
+    });
+
+    await trackApiCall({
+      operation: 'title_generation',
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
     });
 
     const result = response.content[0].text.trim();
@@ -218,9 +235,18 @@ Write a concise comparative analysis (3-4 paragraphs):`;
       max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     });
+    await trackApiCall({
+      operation: 'framing_analysis',
+      model: response.model,
+      inputTokens: response.usage.input_tokens,
+      outputTokens: response.usage.output_tokens,
+      clusterId: cluster.id,
+    });
+
     return response.content[0].text.trim();
   } catch (err) {
     logger.error('Framing analysis failed', { clusterId: cluster.id, error: err.message });
+    await clusterRepo.recordEnrichmentFailure(cluster.id);
     return null;
   }
 }

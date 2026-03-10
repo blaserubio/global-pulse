@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/node';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -11,7 +12,23 @@ import routes from './api/routes.js';
 import { ALL_QUEUES } from './jobs/queues.js';
 import logger from './utils/logger.js';
 
+// Initialize Sentry (must be before Express)
+if (config.sentryDsn) {
+  Sentry.init({
+    dsn: config.sentryDsn,
+    environment: config.nodeEnv,
+    tracesSampleRate: config.nodeEnv === 'production' ? 0.1 : 1.0,
+    sendDefaultPii: false,
+  });
+  logger.info('Sentry initialized');
+}
+
 const app = express();
+
+// Sentry request handler (must be first middleware)
+if (config.sentryDsn) {
+  app.use(Sentry.Handlers.requestHandler());
+}
 
 // Security & middleware
 app.use(helmet({
@@ -101,14 +118,33 @@ app.use((_req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
+// Sentry error handler (must be before custom error handler)
+if (config.sentryDsn) {
+  app.use(Sentry.Handlers.errorHandler());
+}
+
 // Error handler
 app.use((err, _req, res, _next) => {
   logger.error('Unhandled error', { error: err.message, stack: err.stack });
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(config.port, () => {
+const server = app.listen(config.port, () => {
   logger.info(`Global Pulse API running on port ${config.port}`);
 });
+
+// Graceful shutdown
+function shutdown(signal) {
+  logger.info(`${signal} received — shutting down gracefully`);
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+  // Force exit after 10s
+  setTimeout(() => process.exit(1), 10000);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;

@@ -314,11 +314,25 @@ export async function getClustersNeedingTopics(limit = 20) {
        ) AS sample_articles
      FROM story_clusters sc
      WHERE sc.topic IS NULL AND sc.is_active = true
+       AND (sc.enrichment_attempts < 3 OR sc.enrichment_failed_at < NOW() - INTERVAL '6 hours')
      ORDER BY sc.significance DESC
      LIMIT $1`,
     [limit]
   );
   return result.rows;
+}
+
+/**
+ * Record an enrichment failure for retry tracking.
+ */
+export async function recordEnrichmentFailure(clusterId) {
+  await query(
+    `UPDATE story_clusters
+     SET enrichment_attempts = COALESCE(enrichment_attempts, 0) + 1,
+         enrichment_failed_at = NOW()
+     WHERE id = $1`,
+    [clusterId]
+  );
 }
 
 /**
@@ -349,6 +363,7 @@ export async function getClustersNeedingFraming(limit = 10) {
      WHERE sc.source_count >= 2
        AND sc.summary IS NULL
        AND sc.is_active = true
+       AND (sc.enrichment_attempts < 3 OR sc.enrichment_failed_at < NOW() - INTERVAL '6 hours')
        AND (
          (sc.source_count >= 3 AND sc.region_count >= 2)
          OR sc.region_count >= 2
@@ -380,6 +395,7 @@ export async function getClustersNeedingTitles(limit = 20) {
        ) AS sample_articles
      FROM story_clusters sc
      WHERE sc.canonical_title IS NULL AND sc.is_active = true
+       AND (sc.enrichment_attempts < 3 OR sc.enrichment_failed_at < NOW() - INTERVAL '6 hours')
      ORDER BY sc.significance DESC
      LIMIT $1`,
     [limit]
