@@ -88,7 +88,23 @@ Return ONLY valid JSON. No markdown, no code fences. Example format:
 
     let text = response.content[0].text.trim();
     text = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
-    const tactics = JSON.parse(text);
+    const parsed = JSON.parse(text);
+
+    // Validate the response is an array of tactic objects
+    if (!Array.isArray(parsed)) {
+      logger.warn('Psychology map: Claude returned non-array', { type: typeof parsed });
+      return { tactics: [], story_count: res.rows.length, generated_at: new Date().toISOString(), error: 'Invalid response format' };
+    }
+
+    // Filter to only well-formed tactic objects
+    const tactics = parsed.filter(t =>
+      t && typeof t === 'object' &&
+      typeof t.name === 'string' &&
+      typeof t.count === 'number' &&
+      typeof t.percentage === 'number' &&
+      typeof t.description === 'string' &&
+      Array.isArray(t.examples)
+    );
 
     const result = {
       tactics,
