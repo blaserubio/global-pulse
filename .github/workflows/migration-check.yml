@@ -1,0 +1,26 @@
+name: Migration Safety Check
+
+on:
+  pull_request:
+    paths:
+      - 'migrations/**'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify migrations are idempotent
+        run: |
+          for f in migrations/*.sql; do
+            echo "Checking $f for idempotency..."
+            # Warn if CREATE TABLE without IF NOT EXISTS
+            if grep -P "CREATE TABLE(?! IF NOT EXISTS)" "$f"; then
+              echo "WARNING: $f has CREATE TABLE without IF NOT EXISTS"
+            fi
+            # Warn if ALTER TABLE ADD COLUMN without IF NOT EXISTS
+            if grep -P "ADD COLUMN(?! IF NOT EXISTS)" "$f"; then
+              echo "WARNING: $f has ADD COLUMN without IF NOT EXISTS"
+            fi
+          done

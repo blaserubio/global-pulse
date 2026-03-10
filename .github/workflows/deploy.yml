@@ -1,0 +1,103 @@
+name: Deploy Global Pulse
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ─────────────────────────────────────────────────
+  # Job 1: Lint and type-check
+  # ─────────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: ./frontend
+
+      - name: Lint frontend
+        run: npm run lint --if-present
+        working-directory: ./frontend
+
+      - name: Build frontend (catches type errors)
+        run: npm run build
+        working-directory: ./frontend
+        env:
+          NEXT_PUBLIC_API_URL: https://api.globalpulse.dev
+
+  # ─────────────────────────────────────────────────
+  # Job 2: Security audit
+  # ─────────────────────────────────────────────────
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for secrets in codebase
+        run: |
+          # Fail if any .env files are committed
+          if find . -name ".env" -not -path "*.example*" -not -path "*/node_modules/*" | grep -q .; then
+            echo "ERROR: .env file found in repository!"
+            exit 1
+          fi
+
+          # Fail if common secret patterns appear in code
+          if grep -r "sk-ant-\|ANTHROPIC_API_KEY=\|password=" --include="*.js" --include="*.ts" --include="*.json" \
+             --exclude-dir=node_modules --exclude="*.example" --exclude="*.md" .; then
+            echo "ERROR: Possible secrets found in source code!"
+            exit 1
+          fi
+
+      - name: npm audit (backend)
+        run: npm audit --audit-level=high || true
+
+      - name: npm audit (frontend)
+        run: npm audit --audit-level=high || true
+        working-directory: ./frontend
+
+  # ─────────────────────────────────────────────────
+  # Job 3: Deploy backend to Railway (only on main)
+  # ─────────────────────────────────────────────────
+  deploy-backend:
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy API to Railway
+        uses: bervProject/railway-deploy@main
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: global-pulse-api
+
+  deploy-scheduler:
+    needs: [test, security]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Scheduler to Railway
+        uses: bervProject/railway-deploy@main
+        with:
+          railway_token: ${{ secrets.RAILWAY_TOKEN }}
+          service: global-pulse-scheduler
+
+  # Vercel deploys automatically via its GitHub integration — no step needed here

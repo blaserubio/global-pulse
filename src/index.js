@@ -1,0 +1,114 @@
+import express from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import compression from 'compression';
+import rateLimit from 'express-rate-limit';
+import { createBullBoard } from '@bull-board/api';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
+import { ExpressAdapter } from '@bull-board/express';
+import config from './config/index.js';
+import routes from './api/routes.js';
+import { ALL_QUEUES } from './jobs/queues.js';
+import logger from './utils/logger.js';
+
+const app = express();
+
+// Security & middleware
+app.use(helmet({
+  contentSecurityPolicy: config.nodeEnv === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'", config.cors.origin],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      objectSrc: ["'none'"],
+      frameSrc: ["'none'"],
+    },
+  } : false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use(cors({
+  origin: config.nodeEnv === 'production'
+    ? config.cors.origin
+    : [config.cors.origin, 'http://localhost:3001'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'X-Admin-Key'],
+  maxAge: 86400,
+}));
+
+app.use(compression());
+app.use(express.json({ limit: '1mb' }));
+
+// Rate limiting — global
+app.use('/api/', rateLimit({
+  windowMs: config.rateLimit.windowMs,
+  max: config.rateLimit.max,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests. Please try again in a few minutes.' },
+}));
+
+// Stricter rate limit for search endpoints (expensive queries)
+app.use('/api/v1/headlines', rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many search requests. Please slow down.' },
+}));
+app.use('/api/v1/stories', rateLimit({
+  windowMs: 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many search requests. Please slow down.' },
+}));
+
+// Very strict limit for admin routes
+app.use('/api/v1/admin', rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Admin rate limit exceeded.' },
+}));
+
+// Request logging
+app.use((req, _res, next) => {
+  if (req.path !== '/api/v1/health') {
+    logger.debug(`${req.method} ${req.path}`, { query: req.query });
+  }
+  next();
+});
+
+// BullMQ Dashboard
+const serverAdapter = new ExpressAdapter();
+serverAdapter.setBasePath('/admin/queues');
+createBullBoard({
+  queues: ALL_QUEUES.map((q) => new BullMQAdapter(q)),
+  serverAdapter,
+});
+app.use('/admin/queues', serverAdapter.getRouter());
+
+// Routes
+app.use('/api/v1', routes);
+
+// 404
+app.use((_req, res) => {
+  res.status(404).json({ error: 'Not found' });
+});
+
+// Error handler
+app.use((err, _req, res, _next) => {
+  logger.error('Unhandled error', { error: err.message, stack: err.stack });
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.listen(config.port, () => {
+  logger.info(`Global Pulse API running on port ${config.port}`);
+});
+
+export default app;
