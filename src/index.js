@@ -4,13 +4,9 @@ import helmet from 'helmet';
 import cors from 'cors';
 import compression from 'compression';
 import rateLimit from 'express-rate-limit';
-import { createBullBoard } from '@bull-board/api';
-import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
-import { ExpressAdapter } from '@bull-board/express';
 import config from './config/index.js';
 import routes from './api/routes.js';
 import { requireAdminKey } from './api/middleware/adminAuth.js';
-import { ALL_QUEUES } from './jobs/queues.js';
 import logger from './utils/logger.js';
 
 // Initialize Sentry (must be before Express)
@@ -102,18 +98,8 @@ app.use((req, _res, next) => {
   next();
 });
 
-// BullMQ Dashboard (optional — skipped if Redis unavailable)
-if (ALL_QUEUES.length > 0) {
-  const serverAdapter = new ExpressAdapter();
-  serverAdapter.setBasePath('/admin/queues');
-  createBullBoard({
-    queues: ALL_QUEUES.map((q) => new BullMQAdapter(q)),
-    serverAdapter,
-  });
-  app.use('/admin/queues', requireAdminKey, serverAdapter.getRouter());
-} else {
-  logger.warn('BullMQ dashboard disabled — no queues available');
-}
+// BullMQ Dashboard is only available via /admin/queues when workers are running
+// Not loaded on startup to avoid Redis connection crashes
 
 // Routes
 app.use('/api/v1', routes);
