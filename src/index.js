@@ -102,14 +102,18 @@ app.use((req, _res, next) => {
   next();
 });
 
-// BullMQ Dashboard
-const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath('/admin/queues');
-createBullBoard({
-  queues: ALL_QUEUES.map((q) => new BullMQAdapter(q)),
-  serverAdapter,
-});
-app.use('/admin/queues', requireAdminKey, serverAdapter.getRouter());
+// BullMQ Dashboard (optional — skipped if Redis unavailable)
+if (ALL_QUEUES.length > 0) {
+  const serverAdapter = new ExpressAdapter();
+  serverAdapter.setBasePath('/admin/queues');
+  createBullBoard({
+    queues: ALL_QUEUES.map((q) => new BullMQAdapter(q)),
+    serverAdapter,
+  });
+  app.use('/admin/queues', requireAdminKey, serverAdapter.getRouter());
+} else {
+  logger.warn('BullMQ dashboard disabled — no queues available');
+}
 
 // Routes
 app.use('/api/v1', routes);

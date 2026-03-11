@@ -1,22 +1,43 @@
 import { Queue, FlowProducer } from 'bullmq';
 import config from '../config/index.js';
+import logger from '../utils/logger.js';
 
-const connection = { url: config.redis.url };
+let embeddingQueue, clusteringQueue, translationQueue,
+    classificationQueue, titleQueue, framingQueue,
+    flowProducer;
+let ALL_QUEUES = [];
 
-export const embeddingQueue = new Queue('embedding', { connection });
-export const clusteringQueue = new Queue('clustering', { connection });
-export const translationQueue = new Queue('translation', { connection });
-export const classificationQueue = new Queue('classification', { connection });
-export const titleQueue = new Queue('title-generation', { connection });
-export const framingQueue = new Queue('framing-analysis', { connection });
+try {
+  const connection = { url: config.redis.url };
 
-export const flowProducer = new FlowProducer({ connection });
+  embeddingQueue = new Queue('embedding', { connection });
+  clusteringQueue = new Queue('clustering', { connection });
+  translationQueue = new Queue('translation', { connection });
+  classificationQueue = new Queue('classification', { connection });
+  titleQueue = new Queue('title-generation', { connection });
+  framingQueue = new Queue('framing-analysis', { connection });
 
-export const ALL_QUEUES = [
+  flowProducer = new FlowProducer({ connection });
+
+  ALL_QUEUES = [
+    embeddingQueue,
+    clusteringQueue,
+    translationQueue,
+    classificationQueue,
+    titleQueue,
+    framingQueue,
+  ];
+} catch (err) {
+  logger.warn('BullMQ queues not available — job dashboard disabled', { error: err.message });
+}
+
+export {
   embeddingQueue,
   clusteringQueue,
   translationQueue,
   classificationQueue,
   titleQueue,
   framingQueue,
-];
+  flowProducer,
+  ALL_QUEUES,
+};
