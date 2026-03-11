@@ -22,6 +22,11 @@ if (config.sentryDsn) {
 
 const app = express();
 
+// Trust proxy in production (Railway, Vercel, etc.)
+if (config.nodeEnv === 'production') {
+  app.set('trust proxy', 1);
+}
+
 // Sentry request handler (must be first middleware)
 if (config.sentryDsn) {
   app.use(Sentry.Handlers.requestHandler());
